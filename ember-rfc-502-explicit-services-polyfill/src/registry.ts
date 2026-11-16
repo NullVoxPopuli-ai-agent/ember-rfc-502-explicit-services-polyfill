@@ -18,20 +18,20 @@ interface State {
   /**
    * The singleton that the first `lookup` of a key built on an owner.
    *
-   * `register` asserts if a key is already here, because a new binding would have no effect.
+   * `overrideService` asserts if a key is already here, because a new binding would have no effect.
    * `isResolved` reads this map.
    */
   instances: WeakMap<object, Map<Key, object>>;
 
   /**
-   * The class to build for a key on an owner. Only `register(owner, Key, Impl)` writes to it.
+   * The class to build for a key on an owner. Only `overrideService(owner, Key, Impl)` writes to it.
    *
    * `lookup` reads it only when the key has no instance yet: `bindings.get(owner)?.get(key) ?? key`.
    * A key with no binding is its own implementation, so a plain class needs no registration.
-   * `unregister` deletes the binding and the instance. `hasBinding` reads this map.
+   * `hasBinding` reads this map.
    *
    * Bindings and instances are kept apart because a binding is made before the instance exists.
-   * After `register(owner, Plain, Plain)`, `hasBinding` is `true`,
+   * After `overrideService(owner, Key, Impl)`, `hasBinding` is `true`,
    * but `isResolved` is `false` until the first lookup.
    */
   bindings: WeakMap<object, Map<Key, Key>>;
@@ -83,7 +83,7 @@ function instantiate(impl: Key, owner: Owner): object {
   /**
    * The babel plugin swaps the base class only for classes that inject by class key.
    * A class that extends `Service` from `@ember/service` and injects only by name keeps Ember's `Service`.
-   * It is an `EmberObject`, and can still be looked up by class key: `lookup(owner, FeatureFlags)`.
+   * It is an `EmberObject`, and can still be looked up by class key: `service(owner, FeatureFlags)`.
    * `new` skips `init`, so `create` is required.
    *
    * The polyfill's `Service` also has a static `create`, so this branch makes it too.
@@ -123,33 +123,28 @@ function assertKey(key: unknown, verb: string): asserts key is Key {
   );
 }
 
-export function register(context: Context, key: Key, impl: Key = key): void {
-  assertKey(key, "register");
-  assertKey(impl, "register");
-
-  const owner = ownerOf(context, key);
+export function overrideService(owner: Owner, key: Key, impl: Key): void {
+  assertKey(key, "override");
+  assertKey(impl, "override");
+  assert(
+    `Cannot override ${nameOf(key)}: overrideService needs an owner as its first argument.`,
+    isOwner(owner),
+  );
 
   assert(
-    `Cannot register ${nameOf(impl)} under the key ${nameOf(key)}: ${nameOf(impl)} is neither ` +
+    `Cannot override ${nameOf(key)} with ${nameOf(impl)}: ${nameOf(impl)} is neither ` +
       `${nameOf(key)} nor a subclass of it.`,
     impl === key || impl.prototype instanceof key,
   );
 
   assert(
-    `${nameOf(key)} has already been resolved on this owner, so registering ${nameOf(impl)} ` +
-      `would have no effect. Register before the first lookup. In a test, that means before ` +
+    `${nameOf(key)} has already been resolved on this owner, so overriding it with ${nameOf(impl)} ` +
+      `would have no effect. Override before the first lookup. In a test, that means before ` +
       `render or visit.`,
     !state.instances.get(owner)?.has(key),
   );
 
   mapFor(state.bindings, owner).set(key, impl);
-}
-
-export function unregister(context: Context, key: Key): void {
-  const owner = ownerOf(context, key);
-
-  state.bindings.get(owner)?.delete(key);
-  state.instances.get(owner)?.delete(key);
 }
 
 export function hasBinding(context: Context, key: Key): boolean {

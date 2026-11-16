@@ -121,16 +121,10 @@ ember({
   babel: {
     include: {
       whenImporting: ["@ember/service", "ember-rfc-502-explicit-services-polyfill"],
-      whenMatching: [/\.(lookup|register|unregister|hasRegistration)\(/],
     },
   },
 });
 ```
-
-- `whenImporting` sends files that import `@ember/service` or the polyfill to babel.
-- `whenMatching` sends files that call an owner method, such as `owner.register(Key, Impl)`, to babel. These files do not need to import either package.
-
-`whenMatching` needs `@nullvoxpopuli/ember-vite` 1.5.0 or newer.
 
 </details>
 
@@ -175,14 +169,15 @@ module.exports = {
 | `@service(() => Key)`       | resolves on first access, and works in a module cycle |
 | `service(this, Key)`        | resolves now                                          |
 | `service(this, () => Key)`  | resolves now, and works in a module cycle             |
+| `service(owner, Key)`       | resolves now, from an owner                           |
 | `@service('name')`          | unchanged: looks up `service:name`                    |
 | `@service` and `@service()` | unchanged: looks up the name of the field             |
 
-Services are created lazily, as Ember's services are today. Nothing is created at boot or by `register`: the instance is created by the first lookup of its key, which for `@service(Key)` is the first time the field is read.
+Services are created lazily, as Ember's services are today. Nothing is created at boot or by `overrideService`: the instance is created by the first lookup of its key, which for `@service(Key)` is the first time the field is read.
 
 One owner has one instance per key. Each instance is destroyed with its owner, so `registerDestructor` works in a plain class.
 
-A class key never falls back to the resolver. `lookup(owner, FeatureFlags)` and `owner.lookup('service:feature-flags')` give two different instances.
+A class key never falls back to the resolver. `service(owner, FeatureFlags)` and `owner.lookup('service:feature-flags')` give two different instances.
 
 ### Where to put services
 
@@ -281,29 +276,32 @@ A thunk must be an arrow function. The polyfill treats any function with a `prot
 
 ### Choosing an implementation
 
-`register` binds a key to a subclass. Register before the first lookup of the key:
+`overrideService` binds a key to a subclass. Override before the first lookup of the key:
 
 ```js
+import { overrideService } from "@ember/service";
 import { CookieStore } from "my-app/cookies/cookie-store";
 import { ServerCookieStore } from "my-app/cookies/server-cookie-store";
 import { BrowserCookieStore } from "my-app/cookies/browser-cookie-store";
 
 export function initialize(appInstance) {
   if (appInstance.lookup("service:fastboot")?.isFastBoot) {
-    appInstance.register(CookieStore, ServerCookieStore);
+    overrideService(appInstance, CookieStore, ServerCookieStore);
   } else {
-    appInstance.register(CookieStore, BrowserCookieStore);
+    overrideService(appInstance, CookieStore, BrowserCookieStore);
   }
 }
 ```
 
-`register` throws if the implementation is not the key or a subclass of the key. It also throws if the key was already resolved on that owner, because the registration would have no effect.
+`overrideService` throws if the implementation is not the key or a subclass of the key. It also throws if the key was already resolved on that owner, because the override would have no effect.
 
 ## Testing
 
-Register a stub before `render` or `visit`. There is no `inject` step.
+Override with a stub before `render` or `visit`. There is no `inject` step.
 
 ```js
+import { overrideService } from "@ember/service";
+
 module("Acceptance | greeting", function (hooks) {
   setupApplicationTest(hooks);
 
@@ -314,7 +312,7 @@ module("Acceptance | greeting", function (hooks) {
       }
     }
 
-    this.owner.register(Greeter, MockGreeter);
+    overrideService(this.owner, Greeter, MockGreeter);
   });
 });
 ```
@@ -325,19 +323,20 @@ Assigning to a decorated field (`this.counter = stub`) replaces the value on tha
 
 ## Functions
 
-These work with an owner or with any object that has one:
+Import `service` and `overrideService` from `@ember/service`. The babel plugin moves them to the polyfill.
 
-| function                       | does                                            |
-| ------------------------------ | ----------------------------------------------- |
-| `lookup(context, Key)`         | the same as `owner.lookup(Key)`                 |
-| `register(context, Key, Impl)` | the same as `owner.register(Key, Impl)`         |
-| `unregister(context, Key)`     | removes the binding and the instance            |
-| `hasBinding(context, Key)`     | `true` if `register` was called for the key     |
-| `isResolved(context, Key)`     | `true` if the key has an instance on this owner |
+| function                            | does                                                 |
+| ----------------------------------- | ---------------------------------------------------- |
+| `service(context, Key)`             | the instance for the key on the owner of `context`   |
+| `overrideService(owner, Key, Impl)` | binds the key to a subclass, before the first lookup |
+| `hasBinding(context, Key)`          | `true` if `overrideService` was called for the key   |
+| `isResolved(context, Key)`          | `true` if the key has an instance on this owner      |
+
+`context` is an owner, or any object that has one. Import `hasBinding` and `isResolved` from the polyfill. They are not part of the RFC.
 
 The polyfill also exports `Service`. The babel plugin uses it in place of `Service` from `@ember/service`, as described in [How it works](#how-it-works).
 
-`owner.hasRegistration(Key)` throws. The RFC leaves it open, and for a class key the answer is always yes. Use `hasBinding` or `isResolved`.
+`owner.lookup`, `owner.register` and `owner.hasRegistration` only take string names, as in Ember today.
 
 ## TypeScript
 
@@ -351,7 +350,7 @@ Add the polyfill to `compilerOptions.types`:
 }
 ```
 
-This adds the class-key overloads to `service` and `inject` from `@ember/service`. Decorated fields still need a type, because decorators cannot change the type of a field:
+This adds the class-key overloads to `service` and `inject`, and adds `overrideService`, to `@ember/service`. Decorated fields still need a type, because decorators cannot change the type of a field:
 
 ```ts
 @service(Counter) declare counter: Counter;
@@ -361,7 +360,7 @@ This adds the class-key overloads to `service` and `inject` from `@ember/service
 
 The type of `Service` from `@ember/service` is not changed. A class that the babel plugin makes extend the polyfill's `Service` still has the `EmberObject` methods in its type, but not at runtime.
 
-A key can be an abstract class. The `Owner` type is not changed, so in TypeScript use `register(owner, Key, Impl)` and `lookup(owner, Key)` from the polyfill.
+A key can be an abstract class. The `Owner` type is not changed.
 
 ## How it works
 
@@ -382,26 +381,9 @@ to:
 import { service } from "ember-rfc-502-explicit-services-polyfill";
 ```
 
-`inject` moves too. `Service` and type-only imports stay on `@ember/service`.
+`inject` and `overrideService` move too. `Service` and type-only imports stay on `@ember/service`.
 
-The plugin also rewrites owner method calls whose first argument is not a string, so that `owner.lookup`, `owner.register`, `owner.unregister` and `owner.hasRegistration` accept classes:
-
-```js
-this.owner.register(Greeter, MockGreeter);
-// becomes
-ownerRegister(this.owner, Greeter, MockGreeter);
-```
-
-`ownerRegister` comes from `ember-rfc-502-explicit-services-polyfill/owner`. It sends a class key to the polyfill's registry, and passes anything else to the owner's own method. Ember's prototypes are not changed. Calls with a string or template literal, such as `owner.lookup('service:session')`, are not rewritten.
-
-Babel cannot see types, so the plugin only rewrites calls on an expression that looks like an owner:
-
-- a `getOwner(...)` call
-- an `owner` property, such as `this.owner` or `context.owner`
-- a variable named `owner`, `appInstance`, `applicationInstance`, `application`, `engine` or `engineInstance`
-- a `const` set from one of these, such as `const o = getOwner(this)`
-
-Other objects keep their own methods, such as `plugins.register(plugin)`.
+The plugin does not change owner method calls. Ember's prototypes are not changed.
 
 The plugin only changes files in packages that list the polyfill in `dependencies`, `devDependencies` or `peerDependencies`. Your addons are not changed unless they depend on the polyfill.
 
@@ -423,9 +405,7 @@ The polyfill's `Service` has a static `create`, because Ember's container calls 
 
 - Classic `.extend({ foo: service(Key) })` does not support class keys. The string forms still work there.
 - Standard (stage 3) decorators are not supported.
-- Owner calls are only rewritten in files the babel plugin compiles. Calls through a computed name, such as `owner[method](Key)`, or with a spread first argument are not rewritten.
-- An owner with a name the plugin does not know, such as `this.appInstance.register(Key, Impl)`, is not rewritten. Use `register(owner, Key, Impl)` from the polyfill there.
-- The checks in `register` and the "no owner" message use `assert` from `@ember/debug`, which is removed from production builds.
+- The checks in `overrideService` and the "no owner" message use `assert` from `@ember/debug`, which is removed from production builds.
 - Production builds minify class names, so error messages show the minified name.
 - Each engine instance is its own owner, so each engine gets its own instances.
 - Template-only components and plain-function helpers have no `this`. Use a getter on a class, or pass the service in.

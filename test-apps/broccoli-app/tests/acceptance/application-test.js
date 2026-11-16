@@ -3,6 +3,7 @@ import { setupApplicationTest } from 'broccoli-app/tests/helpers';
 import { visit } from '@ember/test-helpers';
 
 import Greeter from 'broccoli-app/domain/greeter';
+import { overrideService } from 'ember-rfc-502-explicit-services-polyfill';
 
 module('Acceptance | class-keyed services', function (hooks) {
   setupApplicationTest(hooks);
@@ -23,7 +24,7 @@ module('Acceptance | class-keyed services', function (hooks) {
     await visit('/');
 
     assert.throws(
-      () => this.owner.register(Greeter, class extends Greeter {}),
+      () => overrideService(this.owner, Greeter, class extends Greeter {}),
       /has already been resolved on this owner/,
     );
   });
@@ -39,7 +40,7 @@ module('Acceptance | stubbing a class-keyed service', function (hooks) {
       }
     }
 
-    this.owner.register(Greeter, MockGreeter);
+    overrideService(this.owner, Greeter, MockGreeter);
   });
 
   test('the route gets the stub, with no inject step', async function (assert) {

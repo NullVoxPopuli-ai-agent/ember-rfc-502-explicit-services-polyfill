@@ -179,118 +179,31 @@ test("re-exports service from the polyfill, and the Service class from @ember/se
   );
 });
 
-test("rewrites owner methods called with something other than a name", () => {
+test("moves overrideService to the polyfill", () => {
   transformsTo(
-    `this.owner.register(Greeter, MockGreeter);
-     appInstance.lookup(CookieStore);
-     owner.unregister(Key);
-     owner.hasRegistration(Key);`,
-    `import { ownerRegister, ownerLookup, ownerUnregister, ownerHasRegistration } from '${POLYFILL}/owner';
-     ownerRegister(this.owner, Greeter, MockGreeter);
-     ownerLookup(appInstance, CookieStore);
-     ownerUnregister(owner, Key);
-     ownerHasRegistration(owner, Key);`,
+    `import { overrideService } from '@ember/service';
+     overrideService(owner, Greeter, MockGreeter);`,
+    `import { overrideService } from '${POLYFILL}';
+     overrideService(owner, Greeter, MockGreeter);`,
   );
 });
 
-test("reuses an existing import of a helper", () => {
-  transformsTo(
-    `import { ownerLookup } from '${POLYFILL}/owner';
-     owner.lookup(A);`,
-    `import { ownerLookup } from '${POLYFILL}/owner';
-     ownerLookup(owner, A);`,
+test("overrideService does not swap the base class", () => {
+  let code = transform(
+    `import Service, { overrideService } from '@ember/service';
+     class A extends Service { init() { overrideService(owner, B, C); } }`,
   );
+
+  assert.match(code, /import Service from .@ember\/service./);
+  assert.match(code, /class A extends Service/);
 });
 
-test("does not collide with a local binding of the same name", () => {
-  transformsTo(
-    `const ownerLookup = 1;
-     owner.lookup(A);`,
-    `import { ownerLookup as ownerLookup0 } from '${POLYFILL}/owner';
-     const ownerLookup = 1;
-     ownerLookup0(owner, A);`,
-  );
-});
-
-test("leaves string names alone", () => {
+test("leaves owner methods alone", () => {
   unchanged(
     [
+      "this.owner.register(Greeter, MockGreeter);",
+      "appInstance.lookup(CookieStore);",
       "owner.lookup('service:session');",
-      "owner.lookup(`service:${name}`);",
-      "owner.register('service:session', Session);",
-      "owner.lookup('service:' + name);",
-    ].join("\n"),
-  );
-});
-
-test("rewrites identifiers, because they may hold a class", () => {
-  transformsTo(
-    `owner.lookup(fullName);`,
-    `import { ownerLookup } from '${POLYFILL}/owner';
-     ownerLookup(owner, fullName);`,
-  );
-});
-
-test("passes the receiver expression as the owner", () => {
-  transformsTo(
-    `getOwner(this).lookup(Session);`,
-    `import { ownerLookup } from '${POLYFILL}/owner';
-     ownerLookup(getOwner(this), Session);`,
-  );
-});
-
-test("keeps the short-circuit of an optional call", () => {
-  transformsTo(
-    `owner?.lookup(Session);`,
-    `var _owner;
-     import { ownerLookup } from '${POLYFILL}/owner';
-     (_owner = owner) == null ? void 0 : ownerLookup(_owner, Session);`,
-  );
-});
-
-test("rewrites calls on an owner property and on an alias of an owner", () => {
-  transformsTo(
-    `context.owner.register(Greeter, MockGreeter);
-     const o = getOwner(this);
-     o.lookup(Session);`,
-    `import { ownerRegister, ownerLookup } from '${POLYFILL}/owner';
-     ownerRegister(context.owner, Greeter, MockGreeter);
-     const o = getOwner(this);
-     ownerLookup(o, Session);`,
-  );
-});
-
-test("sees through TypeScript casts on the owner", () => {
-  transformsTo(
-    `(this.owner as unknown as ClassKeyedOwner).lookup(Plain);
-     owner!.register(A, B);`,
-    `import { ownerLookup, ownerRegister } from '${POLYFILL}/owner';
-     ownerLookup(this.owner as unknown as ClassKeyedOwner, Plain);
-     ownerRegister(owner!, A, B);`,
-  );
-});
-
-test("leaves the same methods alone on objects that are not owners", () => {
-  unchanged(
-    [
-      "jsep.plugins.register({ name: 'ternary', init() {} });",
-      "dataProvider.register(grandparent, { requests });",
-      "this.toolkit.register(Plugin);",
-      "registry.lookup(Key);",
-      "let o = getOwner(this);\no = other;\no.lookup(Session);",
-    ].join("\n"),
-  );
-});
-
-test("leaves calls it cannot rewrite safely alone", () => {
-  unchanged(
-    [
-      "owner.lookup(...args);",
-      "owner['lookup'](Session);",
-      "owner.lookup();",
-      "a?.owner.lookup(Session);",
-      "owner?.lookup(Session).count;",
-      "class X extends Y { m() { super.lookup(Session); } }",
     ].join("\n"),
   );
 });
@@ -350,8 +263,7 @@ test("other plugins see the imports it adds, as ember-auto-import needs", () => 
 
   transformSync(
     `import { service } from '@ember/service';
-     service(this, A);
-     owner.register(A, B);`,
+     service(this, A);`,
     {
       filename: appFile,
       babelrc: false,
@@ -362,5 +274,4 @@ test("other plugins see the imports it adds, as ember-auto-import needs", () => 
   );
 
   assert.ok(seen.includes(POLYFILL), seen.join(", "));
-  assert.ok(seen.includes(`${POLYFILL}/owner`), seen.join(", "));
 });

@@ -7,7 +7,6 @@ export default defineConfig({
       babel: {
         include: {
           whenImporting: ["@ember/service", "ember-rfc-502-explicit-services-polyfill"],
-          whenMatching: [/\.(lookup|register|unregister|hasRegistration)\(/],
         },
       },
     }),

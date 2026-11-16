@@ -4,7 +4,7 @@ import { setOwner } from "@ember/owner";
 
 import type Owner from "@ember/owner";
 import { service } from "@ember/service";
-import { isResolved, lookup } from "ember-rfc-502-explicit-services-polyfill";
+import { isResolved } from "ember-rfc-502-explicit-services-polyfill";
 
 import Counter from "#app/domain/counter.ts";
 import FeatureFlags from "#app/services/feature-flags.ts";
@@ -59,7 +59,7 @@ module("Unit | service()", function (hooks) {
     assert.strictEqual(Counter.constructed, 0);
     assert.false(isResolved(this.owner, Counter));
 
-    assert.strictEqual(consumer.counter, lookup(this.owner, Counter));
+    assert.strictEqual(consumer.counter, service(this.owner, Counter));
     assert.strictEqual(Counter.constructed, 1);
   });
 
@@ -83,7 +83,7 @@ module("Unit | service()", function (hooks) {
     assert.strictEqual(consumer.named, flags);
     assert.strictEqual(consumer.featureFlags, flags);
     assert.strictEqual(inferred.featureFlags, flags);
-    assert.notStrictEqual(consumer.named, lookup(this.owner, FeatureFlags));
+    assert.notStrictEqual(consumer.named, service(this.owner, FeatureFlags));
   });
 
   test("assigning to a decorated field replaces it on that instance", function (assert) {
@@ -97,18 +97,18 @@ module("Unit | service()", function (hooks) {
     consumer.counter = stub as unknown as Counter;
 
     assert.strictEqual(consumer.counter, stub);
-    assert.strictEqual(other.counter, lookup(this.owner, Counter));
+    assert.strictEqual(other.counter, service(this.owner, Counter));
   });
 
   test("service(this, Key) resolves when it runs", function (assert) {
     const eager = new Eager(this.owner);
 
     assert.strictEqual(Counter.constructed, 1);
-    assert.strictEqual(eager.counter, lookup(this.owner, Counter));
+    assert.strictEqual(eager.counter, service(this.owner, Counter));
   });
 
   test("service(this, () => Key) works in a private field", function (assert) {
-    const counter = lookup(this.owner, Counter);
+    const counter = service(this.owner, Counter);
     const instance = new WithPrivateField(this.owner);
 
     counter.increment();
@@ -122,13 +122,13 @@ module("Unit | service()", function (hooks) {
     setOwner(lazy, this.owner);
 
     assert.strictEqual(Counter.constructed, 0);
-    assert.strictEqual(lazy.counter, lookup(this.owner, Counter));
+    assert.strictEqual(lazy.counter, service(this.owner, Counter));
     assert.strictEqual(lazy.counter, lazy.counter);
     assert.strictEqual(Counter.constructed, 1);
   });
 
   test("service(owner, Key) works with the owner itself", function (assert) {
-    assert.strictEqual(service(this.owner, Counter), lookup(this.owner, Counter));
+    assert.strictEqual(service(this.owner, Counter), service(this.owner, Counter));
   });
 
   test("service(undefined) explains the module cycle", function (assert) {
