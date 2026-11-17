@@ -1,3 +1,5 @@
+import { assert } from "@ember/debug";
+
 import type Owner from "@ember/owner";
 
 /**
@@ -21,7 +23,7 @@ export type Instance<K extends Key> = K extends abstract new (owner: Owner) => i
     ? T
     : never;
 
-export type KeyOrThunk<K extends Key> = K | (() => K);
+export type KeyOrThunk<K extends Key> = K | (() => KeyOrThunk<K>);
 
 function hasOwnPrototype(value: unknown): boolean {
   return typeof value === "function" && Object.prototype.hasOwnProperty.call(value, "prototype");
@@ -53,8 +55,26 @@ export function isClassKey(value: unknown): value is abstract new (owner: Owner)
   return hasOwnPrototype(value);
 }
 
+/**
+ * A thunk can return another thunk.
+ * The limit stops a thunk that returns itself.
+ */
+const MAX_THUNK_DEPTH = 10;
+
 export function resolveKey<K extends Key>(keyOrThunk: KeyOrThunk<K>): K {
-  return isThunk(keyOrThunk) ? keyOrThunk() : keyOrThunk;
+  let value: unknown = keyOrThunk;
+
+  for (let depth = 0; isThunk(value); depth++) {
+    assert(
+      `A thunk returned another thunk more than ${MAX_THUNK_DEPTH} times. ` +
+        `A thunk must eventually return a class, or an object with a create() method.`,
+      depth < MAX_THUNK_DEPTH,
+    );
+
+    value = value();
+  }
+
+  return value as K;
 }
 
 /**

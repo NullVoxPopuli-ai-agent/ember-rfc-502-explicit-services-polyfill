@@ -293,7 +293,17 @@ export class History {
 }
 ```
 
-A thunk must be an arrow function. The polyfill treats any function with a `prototype` as a class. A function with a `create` method is a factory, even if it is an arrow function.
+A thunk can return another thunk. The polyfill calls each thunk in turn until it gets a key, and asserts after 10 nested thunks.
+
+### What can be a key
+
+Keys and implementations follow the same protocol. The polyfill checks a value in this order:
+
+1. If it has a `create` method, it is a factory, and `create` makes the instance.
+2. Otherwise, if it has its own `prototype`, it is a class, and the polyfill makes the instance with `new`. The constructor receives the owner.
+3. Otherwise, it is a thunk, and its return value goes through these checks again.
+
+So a thunk must be an arrow function. A function with a `create` method is a factory, even if it is an arrow function.
 
 ### Choosing an implementation
 

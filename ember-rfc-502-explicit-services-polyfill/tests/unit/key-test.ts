@@ -25,6 +25,27 @@ module("Unit | key", function () {
     assert.strictEqual(resolveKey(thunk), NativeClass);
   });
 
+  test("a thunk can return a thunk", function (assert) {
+    const thunk = () => () => () => NativeClass;
+
+    assert.strictEqual(resolveKey(thunk), NativeClass);
+  });
+
+  test("a thunk can return a factory", function (assert) {
+    const factory = { create: () => ({}) };
+
+    assert.strictEqual(
+      resolveKey(() => () => factory),
+      factory,
+    );
+  });
+
+  test("a thunk that never returns a key hits the limit", function (assert) {
+    const forever = (() => forever) as unknown as () => typeof NativeClass;
+
+    assert.throws(() => resolveKey(forever), /returned another thunk more than 10 times/);
+  });
+
   test("a key resolves to itself", function (assert) {
     assert.strictEqual(resolveKey(NativeClass), NativeClass);
   });
