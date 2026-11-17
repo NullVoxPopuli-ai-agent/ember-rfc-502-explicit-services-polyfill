@@ -2,7 +2,7 @@ import { assert } from "@ember/debug";
 import { associateDestroyableChild, isDestroyed, isDestroying } from "@ember/destroyable";
 import { getOwner, setOwner } from "@ember/owner";
 
-import { type Instance, isKey, type Key, nameOf } from "./key.ts";
+import { type Instance, isClassKey, isFactory, isKey, type Key, nameOf } from "./key.ts";
 
 import type Owner from "@ember/owner";
 
@@ -77,9 +77,25 @@ export function ownerOf(context: Context, forKey?: Key): Owner {
   return owner;
 }
 
-function instantiate(impl: Key, owner: Owner): object {
-  const factory = impl as unknown as { create?: (props: object) => object };
+function isObject(value: unknown): value is object {
+  return (typeof value === "object" && value !== null) || typeof value === "function";
+}
 
+/**
+ * Whether `impl` can stand in for `key`.
+ *
+ * `class B extends A` sets the prototype of `B` to `A`,
+ * and `{ __proto__: key, create() {} }` does the same for a factory object,
+ * so one `isPrototypeOf` check covers both.
+ * A constructor function that only sets `B.prototype` needs the second check.
+ */
+function isSubstitute(key: Key, impl: Key): boolean {
+  if (impl === key || Object.prototype.isPrototypeOf.call(key, impl)) return true;
+
+  return isClassKey(key) && isClassKey(impl) && impl.prototype instanceof key;
+}
+
+function instantiate(key: Key, impl: Key, owner: Owner): object {
   /**
    * The babel plugin swaps the base class only for classes that inject by class key.
    * A class that extends `Service` from `@ember/service` and injects only by name keeps Ember's `Service`.
@@ -96,12 +112,28 @@ function instantiate(impl: Key, owner: Owner): object {
    * puts the owner on a props object with `setOwner(props, owner)`, and calls `Audit.create(props)`.
    * The polyfill's `create` reads the owner back with `getOwner(props)`, and calls `new this(owner)`.
    */
-  if (typeof factory.create === "function") {
+  if (isFactory(impl)) {
     const props = {};
 
     setOwner(props, owner);
 
-    const instance = factory.create(props);
+    const instance: unknown = impl.create(props);
+
+    assert(
+      `${nameOf(impl)}.create() must return an object, and returned ${String(instance)}.`,
+      isObject(instance),
+    );
+
+    /**
+     * When the key is its own implementation, `create` can return anything.
+     * An override must return an instance of the key,
+     * because consumers of the key rely on its type.
+     */
+    assert(
+      `${nameOf(impl)}.create() must return an instance of ${nameOf(key)}, ` +
+        `because ${nameOf(impl)} overrides ${nameOf(key)}.`,
+      impl === key || !isClassKey(key) || instance instanceof key,
+    );
 
     if (!getOwner(instance)) setOwner(instance, owner);
 
@@ -117,7 +149,7 @@ function instantiate(impl: Key, owner: Owner): object {
 
 function assertKey(key: unknown, verb: string): asserts key is Key {
   assert(
-    `Cannot ${verb} ${String(key)}: a class key must be a class. ` +
+    `Cannot ${verb} ${nameOf(key)}: a key must be a class, or an object with a create() method. ` +
       `If the class is imported from a module that is part of an import cycle, pass \`() => Key\` instead.`,
     isKey(key),
   );
@@ -134,7 +166,7 @@ export function overrideService(owner: Owner, key: Key, impl: Key): void {
   assert(
     `Cannot override ${nameOf(key)} with ${nameOf(impl)}: ${nameOf(impl)} is neither ` +
       `${nameOf(key)} nor a subclass of it.`,
-    impl === key || impl.prototype instanceof key,
+    isSubstitute(key, impl),
   );
 
   assert(
@@ -170,7 +202,7 @@ export function lookup<K extends Key>(context: Context, key: K): Instance<K> {
   );
 
   const impl = state.bindings.get(owner)?.get(key) ?? key;
-  const instance = instantiate(impl, owner);
+  const instance = instantiate(key, impl, owner);
 
   associateDestroyableChild(owner, instance);
   instances.set(key, instance);

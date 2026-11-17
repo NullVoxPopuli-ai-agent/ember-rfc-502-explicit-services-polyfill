@@ -119,7 +119,7 @@ module("Unit | registry", function (hooks) {
   test("a constructor function works as a key", function (assert) {
     const legacy = service(this.owner, LegacyKey);
 
-    assert.true(legacy instanceof LegacyKey);
+    assert.true(legacy instanceof LegacyConstructor);
     assert.strictEqual(legacy.kind(), "legacy");
   });
 

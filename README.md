@@ -258,6 +258,27 @@ export class Audit {
 
 Glimmer components, `EmberObject` subclasses, and subclasses of `Service` have their owner before their fields run, so fields work there.
 
+### Factories
+
+Anything with a `create(props)` method is also a key: a plain object, or a function with a static `create`. This is the factory protocol that `owner.register('service:x', factory)` already accepts.
+
+```js
+export const clock = {
+  name: "clock",
+  create() {
+    return { now: () => Date.now() };
+  },
+};
+
+// in a component
+@service(clock) clock;
+```
+
+- `create` gets a props object with the owner set on it.
+- `create` must return an object.
+- The `name` property is optional. Error messages use it.
+- To override a factory, inherit from it: `{ __proto__: clock, create() {...} }`.
+
 ### Module cycles
 
 If two services import each other, use the thunk form on both sides:
@@ -272,7 +293,7 @@ export class History {
 }
 ```
 
-A thunk must be an arrow function. The polyfill treats any function with a `prototype` as a class.
+A thunk must be an arrow function. The polyfill treats any function with a `prototype` as a class. A function with a `create` method is a factory, even if it is an arrow function.
 
 ### Choosing an implementation
 
@@ -293,7 +314,7 @@ export function initialize(appInstance) {
 }
 ```
 
-`overrideService` throws if the implementation is not the key or a subclass of the key. It also throws if the key was already resolved on that owner, because the override would have no effect.
+`overrideService` throws if the implementation does not inherit from the key. A subclass inherits from its class. A factory object inherits from a key through `__proto__`. It also throws if the key was already resolved on that owner, because the override would have no effect.
 
 ## Testing
 
@@ -389,7 +410,9 @@ The plugin only changes files in packages that list the polyfill in `dependencie
 
 ### Instances
 
-A class with a static `create`, such as a subclass of `Service`, is made with `create`. Any other class is made with `new Key(owner)`, and then gets `setOwner`.
+Anything with a `create` method, such as a subclass of `Service` or a factory object, is made with `create`. Any other class is made with `new Key(owner)`, and then gets `setOwner`.
+
+The value that `create` returns must be an object. When the implementation overrides a class key, the value must also be an instance of the key.
 
 ### The `Service` base class
 

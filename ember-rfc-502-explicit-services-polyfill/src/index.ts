@@ -1,4 +1,4 @@
-export { type Instance, type Key, type KeyOrThunk } from "./key.ts";
+export { type Factory, type Instance, type Key, type KeyOrThunk } from "./key.ts";
 export { type Context, hasBinding, isResolved, overrideService } from "./registry.ts";
 export { type Decorator, inject, service } from "./service.ts";
 export { Service } from "./service-base.ts";
@@ -21,6 +21,6 @@ declare module "@ember/service" {
   export function overrideService<K extends AnyKey>(
     owner: Owner,
     key: K,
-    impl: abstract new (owner: Owner) => KeyInstance<K>,
+    impl: AnyKey<KeyInstance<K>>,
   ): void;
 }

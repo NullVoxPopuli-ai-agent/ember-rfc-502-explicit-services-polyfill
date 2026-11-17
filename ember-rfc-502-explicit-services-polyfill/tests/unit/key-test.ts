@@ -29,6 +29,21 @@ module("Unit | key", function () {
     assert.strictEqual(resolveKey(NativeClass), NativeClass);
   });
 
+  test("an object with create() is a key", function (assert) {
+    const factory = { create: () => ({}) };
+
+    assert.true(isKey(factory));
+    assert.false(isThunk(factory));
+    assert.strictEqual(resolveKey(factory), factory);
+  });
+
+  test("an arrow function with create() is a key, not a thunk", function (assert) {
+    const factory = Object.assign(() => NativeClass, { create: () => ({}) });
+
+    assert.true(isKey(factory));
+    assert.false(isThunk(factory));
+  });
+
   test("non-functions are neither", function (assert) {
     for (const [label, value] of Object.entries({
       undefined,
