@@ -1,7 +1,7 @@
 import { module, test } from "qunit";
 import { setupRenderingTest } from "ember-qunit";
 import { click, render } from "@ember/test-helpers";
-import { lookup, register } from "ember-rfc-502-explicit-services-polyfill";
+import { service, overrideService } from "ember-rfc-502-explicit-services-polyfill";
 
 import CounterDisplay from "#app/components/counter-display.gts";
 import Dashboard from "#app/components/dashboard.gts";
@@ -23,11 +23,11 @@ module("Integration | class-keyed services", function (hooks) {
     await click("button");
 
     assert.dom("output").hasText("1");
-    assert.deepEqual(lookup(this.owner, Logger).messages, ["increment at 1"]);
+    assert.deepEqual(service(this.owner, Logger).messages, ["increment at 1"]);
   });
 
   test("a stub defined in the test file replaces the service", async function (assert) {
-    register(this.owner, Counter, StartsAtTen);
+    overrideService(this.owner, Counter, StartsAtTen);
 
     await render(<template><CounterDisplay /></template>);
 
@@ -49,7 +49,7 @@ module("Integration | class-keyed services", function (hooks) {
     await render(<template><CounterDisplay /></template>);
 
     assert.throws(
-      () => register(this.owner, Counter, StartsAtTen),
+      () => overrideService(this.owner, Counter, StartsAtTen),
       /has already been resolved on this owner/,
     );
   });

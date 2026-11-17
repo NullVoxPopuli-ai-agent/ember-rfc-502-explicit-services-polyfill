@@ -1,14 +1,15 @@
 import CookieStore from 'min-supported/domain/cookies/cookie-store';
 import BrowserCookieStore from 'min-supported/domain/cookies/browser-cookie-store';
 import ServerCookieStore from 'min-supported/domain/cookies/server-cookie-store';
+import { overrideService } from 'ember-rfc-502-explicit-services-polyfill';
 
 export function initialize(appInstance) {
   const fastboot = appInstance.lookup('service:fastboot');
 
   if (fastboot?.isFastBoot) {
-    appInstance.register(CookieStore, ServerCookieStore);
+    overrideService(appInstance, CookieStore, ServerCookieStore);
   } else {
-    appInstance.register(CookieStore, BrowserCookieStore);
+    overrideService(appInstance, CookieStore, BrowserCookieStore);
   }
 }
 

@@ -2,7 +2,7 @@ import { module, test } from "qunit";
 import { setupTest } from "ember-qunit";
 import { getApplication, settled } from "@ember/test-helpers";
 import { destroy } from "@ember/destroyable";
-import { lookup } from "ember-rfc-502-explicit-services-polyfill";
+import { service } from "ember-rfc-502-explicit-services-polyfill";
 
 import CookieStore from "#app/domain/cookies/cookie-store.ts";
 import BrowserCookieStore from "#app/domain/cookies/browser-cookie-store.ts";
@@ -13,7 +13,7 @@ module("Unit | instance-initializer | register-cookie-store", function (hooks) {
   setupTest(hooks);
 
   test("the booted app registered the browser implementation", function (assert) {
-    assert.true(lookup(this.owner, CookieStore) instanceof BrowserCookieStore);
+    assert.true(service(this.owner, CookieStore) instanceof BrowserCookieStore);
   });
 
   test("under fastboot, the server implementation is registered", async function (assert) {
@@ -22,7 +22,7 @@ module("Unit | instance-initializer | register-cookie-store", function (hooks) {
     owner.register("service:fastboot", { isFastBoot: true }, { instantiate: false });
     initialize(owner);
 
-    const store = lookup(owner, CookieStore);
+    const store = service(owner, CookieStore);
 
     assert.true(store instanceof ServerCookieStore);
     assert.strictEqual(store.kind, "server");

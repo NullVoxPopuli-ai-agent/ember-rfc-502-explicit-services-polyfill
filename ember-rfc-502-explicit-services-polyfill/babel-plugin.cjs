@@ -5,33 +5,12 @@ const path = require("node:path");
 const { ImportUtil } = require("babel-import-util");
 
 const POLYFILL = "ember-rfc-502-explicit-services-polyfill";
-const OWNER_HELPERS = `${POLYFILL}/owner`;
 const SERVICE = "@ember/service";
-const POLYFILLED_EXPORTS = new Set(["service", "inject"]);
+const POLYFILLED_EXPORTS = new Set(["service", "inject", "overrideService"]);
+const INJECTORS = new Set(["service", "inject"]);
 const EMBER_OBJECT_HOOKS = new Map([
   ["init", "Move the code in init() to a constructor that calls super(owner)."],
   ["willDestroy", "Use registerDestructor() from @ember/destroyable instead of willDestroy()."],
-]);
-const OWNER_NAMES = new Set([
-  "owner",
-  "appInstance",
-  "applicationInstance",
-  "application",
-  "engine",
-  "engineInstance",
-]);
-const TS_WRAPPERS = new Set([
-  "TSAsExpression",
-  "TSSatisfiesExpression",
-  "TSNonNullExpression",
-  "TSTypeAssertion",
-  "ParenthesizedExpression",
-]);
-const OWNER_METHODS = new Map([
-  ["lookup", "ownerLookup"],
-  ["register", "ownerRegister"],
-  ["unregister", "ownerUnregister"],
-  ["hasRegistration", "ownerHasRegistration"],
 ]);
 
 const PACKAGE_DIR = realpath(__dirname);
@@ -129,121 +108,9 @@ function explicitServicesPolyfill(babel) {
         for (let statement of path.get("body")) {
           if (statement.isExportNamedDeclaration()) rewriteExport(statement);
         }
-
-        path.traverse(ownerCalls(importUtil));
       },
     },
   };
-
-  function ownerCalls(importUtil) {
-    return {
-      CallExpression(path) {
-        let method = ownerMethod(path);
-
-        if (!method) return;
-
-        let { object } = path.node.callee;
-        let args = path.node.arguments;
-
-        importUtil.replaceWith(path, (i) =>
-          t.callExpression(i.import(OWNER_HELPERS, method), [object, ...args]),
-        );
-      },
-
-      OptionalCallExpression(path) {
-        if (path.node.optional || !path.node.callee.optional) return;
-        if (continuesChain(path)) return;
-
-        let method = ownerMethod(path);
-
-        if (!method) return;
-
-        let { object } = path.node.callee;
-        let args = path.node.arguments;
-        let receiver = path.scope.generateUidIdentifierBasedOnNode(object);
-
-        path.scope.push({ id: receiver });
-        importUtil.replaceWith(path, (i) =>
-          t.conditionalExpression(
-            t.binaryExpression(
-              "==",
-              t.assignmentExpression("=", t.cloneNode(receiver), object),
-              t.nullLiteral(),
-            ),
-            t.unaryExpression("void", t.numericLiteral(0)),
-            t.callExpression(i.import(OWNER_HELPERS, method), [t.cloneNode(receiver), ...args]),
-          ),
-        );
-      },
-    };
-  }
-
-  function ownerMethod(path) {
-    let { node } = path;
-    let callee = node.callee;
-
-    if (callee.type !== "MemberExpression" && callee.type !== "OptionalMemberExpression") {
-      return undefined;
-    }
-    if (callee.computed || callee.property.type !== "Identifier") return undefined;
-    if (callee.object.type === "Super") return undefined;
-    if (isOptionalChain(callee.object)) return undefined;
-
-    let method = OWNER_METHODS.get(callee.property.name);
-
-    if (!method) return undefined;
-
-    let [first] = node.arguments;
-
-    if (!first || first.type === "SpreadElement" || isName(first)) return undefined;
-    if (!isOwner(callee.object, path.scope)) return undefined;
-
-    return method;
-  }
-
-  /**
-   * Whether an expression is an owner, judged by its shape, because babel cannot see types.
-   * Other objects have `register` and `lookup` methods too, such as jsep's `plugins.register(plugin)`,
-   * and those calls must keep their own method.
-   */
-  function isOwner(node, scope, seen = new Set()) {
-    while (TS_WRAPPERS.has(node.type)) node = node.expression;
-
-    if (node.type === "CallExpression") {
-      return node.callee.type === "Identifier" && node.callee.name === "getOwner";
-    }
-
-    if (node.type === "MemberExpression" || node.type === "OptionalMemberExpression") {
-      return (
-        !node.computed && node.property.type === "Identifier" && node.property.name === "owner"
-      );
-    }
-
-    if (node.type !== "Identifier") return false;
-    if (OWNER_NAMES.has(node.name)) return true;
-
-    let binding = scope.getBinding(node.name);
-
-    if (!binding || seen.has(binding) || !binding.path.isVariableDeclarator()) return false;
-    if (!binding.constant || !binding.path.node.init) return false;
-
-    seen.add(binding);
-
-    return isOwner(binding.path.node.init, binding.path.scope, seen);
-  }
-
-  function isOptionalChain(node) {
-    return node.type === "OptionalMemberExpression" || node.type === "OptionalCallExpression";
-  }
-
-  function continuesChain(path) {
-    let parent = path.parentPath;
-
-    return (
-      (parent.isOptionalMemberExpression() && parent.node.object === path.node) ||
-      (parent.isOptionalCallExpression() && parent.node.callee === path.node)
-    );
-  }
 
   function isName(node) {
     if (node.type === "StringLiteral" || node.type === "TemplateLiteral") return true;
@@ -276,7 +143,7 @@ function explicitServicesPolyfill(babel) {
           base = binding;
         } else if (
           specifier.isImportSpecifier() &&
-          POLYFILLED_EXPORTS.has(exportedName(specifier.node.imported))
+          INJECTORS.has(exportedName(specifier.node.imported))
         ) {
           injectors.push(binding);
         }

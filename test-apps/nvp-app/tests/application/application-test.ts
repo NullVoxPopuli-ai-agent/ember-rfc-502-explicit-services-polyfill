@@ -1,7 +1,7 @@
 import { module, test } from "qunit";
 import { setupApplicationTest } from "ember-qunit";
 import { visit } from "@ember/test-helpers";
-import { register } from "ember-rfc-502-explicit-services-polyfill";
+import { overrideService } from "ember-rfc-502-explicit-services-polyfill";
 
 import Greeter from "#app/domain/greeter.ts";
 
@@ -24,7 +24,7 @@ module("Acceptance | class-keyed services", function (hooks) {
     await visit("/");
 
     assert.throws(
-      () => register(this.owner, Greeter, class extends Greeter {}),
+      () => overrideService(this.owner, Greeter, class extends Greeter {}),
       /has already been resolved on this owner/,
     );
   });
@@ -40,7 +40,7 @@ module("Acceptance | stubbing a class-keyed service", function (hooks) {
       }
     }
 
-    register(this.owner, Greeter, MockGreeter);
+    overrideService(this.owner, Greeter, MockGreeter);
   });
 
   test("the route gets the stub, with no inject step", async function (assert) {

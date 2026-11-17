@@ -3,13 +3,7 @@ import { setupTest } from 'broccoli-app/tests/helpers';
 import { getApplication, settled } from '@ember/test-helpers';
 import { destroy, isDestroyed } from '@ember/destroyable';
 import { getOwner } from '@ember/owner';
-import {
-  hasBinding,
-  isResolved,
-  lookup,
-  register,
-  unregister,
-} from 'ember-rfc-502-explicit-services-polyfill';
+import { hasBinding, isResolved, service, overrideService } from 'ember-rfc-502-explicit-services-polyfill';
 
 import Audit from 'broccoli-app/domain/audit';
 import Broken from 'broccoli-app/domain/broken';
@@ -36,35 +30,35 @@ function secondOwner() {
 module('Unit | registry', function (hooks) {
   setupTest(hooks);
 
-  test('an unregistered key registers itself on first lookup', function (assert) {
+  test('a key with no override instantiates itself on first lookup', function (assert) {
     assert.false(hasBinding(this.owner, Counter));
     assert.false(isResolved(this.owner, Counter));
 
-    assert.true(lookup(this.owner, Counter) instanceof Counter);
+    assert.true(service(this.owner, Counter) instanceof Counter);
     assert.true(isResolved(this.owner, Counter));
     assert.false(hasBinding(this.owner, Counter));
   });
 
   test('one instance per owner', function (assert) {
     assert.strictEqual(
-      lookup(this.owner, Counter),
-      lookup(this.owner, Counter),
+      service(this.owner, Counter),
+      service(this.owner, Counter),
     );
   });
 
   test('each owner gets its own instance', async function (assert) {
     const other = secondOwner();
 
-    assert.notStrictEqual(lookup(this.owner, Counter), lookup(other, Counter));
+    assert.notStrictEqual(service(this.owner, Counter), service(other, Counter));
 
     destroy(other);
     await settled();
   });
 
-  test('registering a subclass replaces the implementation', function (assert) {
-    register(this.owner, Counter, SubCounter);
+  test('overriding with a subclass replaces the implementation', function (assert) {
+    overrideService(this.owner, Counter, SubCounter);
 
-    const counter = lookup(this.owner, Counter);
+    const counter = service(this.owner, Counter);
 
     assert.true(counter instanceof SubCounter);
     assert.true(counter instanceof Counter);
@@ -75,59 +69,43 @@ module('Unit | registry', function (hooks) {
     assert.strictEqual(counter.count, 2);
   });
 
-  test('registering an unrelated class throws', function (assert) {
+  test('overriding with an unrelated class throws', function (assert) {
     assert.throws(
-      () => register(this.owner, Counter, Unrelated),
+      () => overrideService(this.owner, Counter, Unrelated),
       /is neither \w+ nor a subclass of it/,
     );
   });
 
-  test('registering after the key was resolved throws', function (assert) {
-    lookup(this.owner, Counter);
+  test('overriding after the key was resolved throws', function (assert) {
+    service(this.owner, Counter);
 
     assert.throws(
-      () => register(this.owner, Counter, SubCounter),
+      () => overrideService(this.owner, Counter, SubCounter),
       /has already been resolved on this owner/,
     );
   });
 
-  test('unregister forgets the binding and the instance', function (assert) {
-    register(this.owner, Counter, SubCounter);
-
-    const first = lookup(this.owner, Counter);
-
-    unregister(this.owner, Counter);
-
-    assert.false(hasBinding(this.owner, Counter));
-    assert.false(isResolved(this.owner, Counter));
-
-    const second = lookup(this.owner, Counter);
-
-    assert.notStrictEqual(second, first);
-    assert.false(second instanceof SubCounter);
-  });
-
   test('a plain class is constructed with new and the owner', function (assert) {
-    const audit = lookup(this.owner, Audit);
+    const audit = service(this.owner, Audit);
 
     assert.strictEqual(getOwner(audit), this.owner);
 
     audit.record('hello');
 
-    assert.deepEqual(lookup(this.owner, Logger).messages, ['hello at 0']);
+    assert.deepEqual(service(this.owner, Logger).messages, ['hello at 0']);
   });
 
   test('an EmberObject service is created through create, and its injections work', function (assert) {
-    const session = lookup(this.owner, Session);
+    const session = service(this.owner, Session);
 
     assert.true(session instanceof Session);
     assert.strictEqual(getOwner(session), this.owner);
-    assert.strictEqual(session.counter, lookup(this.owner, Counter));
+    assert.strictEqual(session.counter, service(this.owner, Counter));
     assert.true(session.flags.isEnabled('explicit-di'));
   });
 
   test('a class key does not fall back to the resolver name', function (assert) {
-    const byClass = lookup(this.owner, FeatureFlags);
+    const byClass = service(this.owner, FeatureFlags);
     const byName = this.owner.lookup('service:feature-flags');
 
     assert.true(byClass instanceof FeatureFlags);
@@ -136,7 +114,7 @@ module('Unit | registry', function (hooks) {
   });
 
   test('a constructor function works as a key', function (assert) {
-    const legacy = lookup(this.owner, LegacyKey);
+    const legacy = service(this.owner, LegacyKey);
 
     assert.true(legacy instanceof LegacyKey);
     assert.strictEqual(legacy.kind(), 'legacy');
@@ -144,7 +122,7 @@ module('Unit | registry', function (hooks) {
 
   test('a plain class cannot inject from a field initializer', function (assert) {
     assert.throws(
-      () => lookup(this.owner, Broken),
+      () => service(this.owner, Broken),
       /Cannot resolve \w+ from \w+: it has no owner/,
     );
   });
@@ -159,8 +137,8 @@ module('Unit | registry', function (hooks) {
 
   test('instances are destroyed with their owner', async function (assert) {
     const other = secondOwner();
-    const counter = lookup(other, Counter);
-    const session = lookup(other, Session);
+    const counter = service(other, Counter);
+    const session = service(other, Session);
 
     assert.false(counter.destroyed);
 
@@ -178,7 +156,7 @@ module('Unit | registry', function (hooks) {
     await settled();
 
     assert.throws(
-      () => lookup(other, Counter),
+      () => service(other, Counter),
       /on an owner that is destroyed/,
     );
   });

@@ -10,10 +10,6 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
-    "./owner": {
-      "types": "./dist/owner.d.ts",
-      "default": "./dist/owner.js"
-    },
     "./babel-plugin": "./babel-plugin.cjs",
     "./babel-plugin.cjs": "./babel-plugin.cjs",
     "./addon-main.js": "./addon-main.cjs"
